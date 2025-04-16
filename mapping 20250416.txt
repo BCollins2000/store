@@ -1,0 +1,117 @@
+import pandas as pd
+import folium
+from folium.features import DivIcon
+import branca.colormap as cm
+
+# Load the Excel file
+file_path = zzz
+df = pd.read_excel(file_path, engine='openpyxl')
+
+# Filter out rows where LMP is not a number
+df = df[pd.to_numeric(df['LMP'], errors='coerce').notnull()]
+
+# Calculate the center of the map
+center_lat = (df['Latitude'].max() + df['Latitude'].min())/2
+center_lng = (df['Longitude'].max() + df['Longitude'].min())/2
+
+# Create the map object centered around the calculated center
+m = folium.Map(location=[center_lat, center_lng], zoom_start=5)
+
+
+min_price = df['LMP'].min()
+max_price = df['LMP'].max()
+# Define the colormap based on the asset price (blue to red scale)
+price_colormap = cm.LinearColormap(
+    colors=["blue", "royalblue","cornflowerblue" ,"powderblue", "mistyrose", "lightcoral","indianred" ,"firebrick"], 
+    vmin=0, 
+    vmax=60, 
+    caption='Asset Price'
+)
+
+# Add markers for each asset with colormap based on price (50% larger bubbles)
+for _, row in df.iterrows():
+    marker_html = f"""
+    <div class="custom-marker"
+         data-name="{row['ASSET_NAME']}"
+         data-price="{round(row['LMP'], 2)}"
+         data-lat="{row['Latitude']}"
+         data-lon="{row['Longitude']}"
+         style="width: 18px; height: 18px; background: {price_colormap(row['LMP'])}; border-radius: 50%; border: 2px solid white;">
+    </div>
+    """
+    folium.Marker(
+        location=[row["Latitude"], row["Longitude"]],
+        icon=DivIcon(html=marker_html, icon_size=(18, 18), icon_anchor=(9, 9)),
+    ).add_to(m)
+
+# Hover panel and JS that follows the mouse (formatted as specified)
+hover_panel_html = """
+<div id="hoverPanel" style="
+    position: fixed;
+    top: 0px;
+    left: 0px;
+    z-index: 9999;
+    background-color: white;
+    border: 2px solid #555;
+    border-radius: 8px;
+    padding: 10px;
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+    display: none;
+    pointer-events: none;
+    min-width: 150px;
+    font-family: sans-serif;
+    font-size: 14px;">
+</div>
+
+<script>
+setTimeout(() => {
+    const panel = document.getElementById("hoverPanel");
+    const markers = document.querySelectorAll(".custom-marker");
+
+    // Move panel with mouse
+    document.addEventListener("mousemove", (e) => {
+        panel.style.left = (e.clientX + 15) + "px";
+        panel.style.top = (e.clientY + 15) + "px";
+    });
+
+    markers.forEach(marker => {
+        marker.addEventListener("mouseenter", () => {
+            const lat = marker.dataset.lat;
+            const lon = marker.dataset.lon;
+
+            // Find all markers at this lat/lon
+            const overlapping = Array.from(markers).filter(m =>
+                m.dataset.lat === lat && m.dataset.lon === lon
+            );
+
+            let html = "";
+            overlapping.forEach(m => {
+                html += `<b>Asset Name:</b> ${m.dataset.name}<br><b>Price:</b> $${m.dataset.price}<br><br>`;
+            });
+
+            panel.innerHTML = html;
+            panel.style.display = "block";
+        });
+
+        marker.addEventListener("mouseleave", () => {
+            panel.style.display = "none";
+        });
+    });
+}, 500);
+</script>
+"""
+
+# Inject the floating panel and JS
+m.get_root().html.add_child(folium.Element(hover_panel_html))
+
+# Add the colormap to the map
+m.add_child(price_colormap)
+
+# Add the title to the map
+title_html = '<h3 align="center" style="font-size:20px"><b>Asset Price Map</b></h3>'
+m.get_root().html.add_child(folium.Element(title_html))
+
+# Save to file
+m.save("hover_panel_map_blue_red_v2.html")
+
+print("The HTML map has been created and saved as 'hover_panel_map_blue_red_v2.html'.")
